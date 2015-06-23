@@ -154,3 +154,6 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+secret*
+user_mappings/*
