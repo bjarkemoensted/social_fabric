@@ -872,13 +872,28 @@ def get_correlations(X, Y):
     return correlations
         
 
-def make_kernel(correlations = None, gamma = 1.0, threshold = 0.0):
-    '''Returns a weighted radial basis function (WRBF) kernel.'''
+def make_kernel(importances = None, gamma = 1.0, threshold = 0.0):
+    '''Returns a weighted radial basis function (WRBF) kernel which can be 
+    passed to an SVM or SVR from the sklearn module.
+    
+    Parameters:
+    -----------------------
+    importances : list
+      The importance of each input feature. The value of element i can mean
+      e.g. the linear correlation between feature i and target variable y.
+    
+    gamma : float
+      The usual gamma parameter denoting inverse width of the gaussian used.
+      
+    threshold : float
+      The minimum value of the importance to be used. Features less important
+      than threshold will simply be ignored.
+    '''
     def kernel(x,y, *args, **kwargs):
-        if correlations == None:
+        if importances == None:
             _corrs = np.ones(shape = (len(x),), dtype = np.float64)
         else:
-            _corrs = correlations
+            _corrs = importances
         d = len(_corrs)  #number of features
         #Strong (above threshold) correlations
         strong = [np.abs(c) if np.abs(c) >= threshold else 0.0
