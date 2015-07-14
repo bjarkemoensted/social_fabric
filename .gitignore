@@ -157,3 +157,4 @@ $RECYCLE.BIN/
 
 secret*
 user_mappings/*
+*.pyc

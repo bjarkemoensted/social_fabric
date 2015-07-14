@@ -715,9 +715,7 @@ class _BaselineClassifier(object):
         #    
     def predict(self, x):
         return self.guess
-    
-    
-    
+        
 
 def _worker(X, Y, score_type, train_percentage, classifier, clf_args, n_groups,
             replace):
@@ -736,6 +734,8 @@ def _worker(X, Y, score_type, train_percentage, classifier, clf_args, n_groups,
             clf = svm.SVR(**clf_args)
         elif classifier == 'baseline_mean':
             clf = _BaselineRegressor()
+        elif classifier == 'WRBFR':
+            clf = _WRBFR(**clf_args)
         
         #Create classifier and split dataset into labels
         elif classifier == 'RandomForestClassifier':
@@ -747,6 +747,10 @@ def _worker(X, Y, score_type, train_percentage, classifier, clf_args, n_groups,
         elif classifier == 'baseline_most_common_label':
             clf = _BaselineClassifier()
             ysample = assign_labels(ysample, n_groups)
+        elif classifier == 'WRBFC':
+            clf = _WRBFC(**clf_args)
+            ysample = assign_labels(ysample, n_groups)
+            
         #Fail if none of the above classifiers were specified
         else:
             raise ValueError('Regressor or classifier not defined.')
@@ -815,7 +819,8 @@ def bootstrap(X, Y, classifier, score_type = 'mse', train_percentage = 0.8,
     classifier : str
       Which classifier to use to predict the test set. Allowed values:
       'RandomForestRegressor', 'baseline_mean', 'SVR',
-      'RandomForestClassifier', 'SVC', 'baseline_most_common_label'
+      'RandomForestClassifier', 'SVC', 'baseline_most_common_label, WRBFR,
+      WRBFC'
     
     score_type : str
       String signifying which function to estimate the distribution of.
@@ -872,7 +877,7 @@ def get_correlations(X, Y):
     return correlations
         
 
-def make_kernel(importances = None, gamma = 1.0, threshold = 0.0):
+def make_kernel(importances, gamma = 1.0, threshold = 0.0):
     '''Returns a weighted radial basis function (WRBF) kernel which can be 
     passed to an SVM or SVR from the sklearn module.
     
@@ -881,6 +886,7 @@ def make_kernel(importances = None, gamma = 1.0, threshold = 0.0):
     importances : list
       The importance of each input feature. The value of element i can mean
       e.g. the linear correlation between feature i and target variable y.
+      None means feature will be wieghted equally.
     
     gamma : float
       The usual gamma parameter denoting inverse width of the gaussian used.
@@ -891,13 +897,13 @@ def make_kernel(importances = None, gamma = 1.0, threshold = 0.0):
     '''
     def kernel(x,y, *args, **kwargs):
         if importances == None:
-            _corrs = np.ones(shape = (len(x),), dtype = np.float64)
+            weights = np.ones(shape = (len(x),), dtype = np.float64)
         else:
-            _corrs = importances
-        d = len(_corrs)  #number of features
-        #Strong (above threshold) correlations
+            weights = importances
+        d = len(weights)  #number of features
+        #Strong (above threshold) correlations/importances
         strong = [np.abs(c) if np.abs(c) >= threshold else 0.0
-                  for c in _corrs]
+                  for c in weights]
         normfactor = 1.0/np.sqrt(sum([e**2 for e in strong]))
         #Metric to compute distance between points
         metric = dok_matrix((d,d), dtype = np.float64)
@@ -912,31 +918,50 @@ def make_kernel(importances = None, gamma = 1.0, threshold = 0.0):
         return result
     return kernel
 
+class _WRBFR(svm.SVR):
+    '''Weighted radial basis function support vector regressor.'''
+    def __init__(self, importances, threshold = 0, C = 1.0, epsilon = 0.1,
+                 gamma = 0.0):
+        kernel = make_kernel(importances = importances, threshold = threshold,
+                             gamma = gamma)
+        super(_WRBFR, self).__init__(C = C, epsilon = epsilon, kernel = kernel)
+
+class _WRBFC(svm.SVC):
+    '''Weighted radial basis function support vector classifier.'''
+    def __init__(self, importances, threshold = 0, C = 1.0, gamma = 0.0):
+        kernel = make_kernel(importances = importances, threshold = threshold,
+                             gamma = gamma)
+        super(_WRBFC, self).__init__(C = C, kernel = kernel)
+
 if __name__ == '__main__':
-    pass
+
+    
     X, Y, ind_dict = read_data('../data.json', trait = 'openness',
                         features = ['call_iet_med', 'text_iet_med', 'social_entropy', 'call_entropy', 'travel_med', 'n_places', 'text_latency', 'call_night_activity'],
                         n_classes = 3
                         )
 #    X = [[1,2,7,0],[3,1,6,0.01],[6,8,1,0],[10,8,2,0.01]]
 #    Y = [1,1,0,0]
-    
-    cut = int(0.8*len(X))
+#    
+    cut = int(0.6*len(X))
+#    
+    random.shuffle(X)
+    random.shuffle(Y)
     
     xtrain = X[:cut]
     ytrain = Y[:cut]
     xtest = X[cut:]
     ytest = Y[cut:]
-    
     corrs = get_correlations(X, Y)
     print corrs
     
     C = 70
     gamma = 3.75
     
-    kernel = make_kernel(corrs, 0.05)
+    kernel = make_kernel(corrs, 0.0)
     
     clf = svm.SVC(kernel = kernel)
+    clf = svm.SVC()
     clf.fit(xtrain, ytrain)
     
     hits = 0
@@ -950,7 +975,16 @@ if __name__ == '__main__':
     for i in xrange(len(corrs)):
         print ind_dict[i], corrs[i]
     
+    test = _WRBFC(threshold=0.1, gamma = 0.2, importances=corrs)
+    test.fit(xtrain, ytrain)
+    
+    preds = []
+    for i in xrange(len(ytest)):
+        pred = test.predict(xtest[i])[0]
+        print pred, ytest[i]
+        preds.append(pred)
 
+    print len(Counter(preds).keys())
 
 #    print len(X[0])
 ##    print i
