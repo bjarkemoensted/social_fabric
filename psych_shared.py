@@ -29,6 +29,22 @@ nude = (203/256,150/256,93/256)
 wine = (110/256,14/256,14/256)
 moerkeroed = (156/256,30/256,36/256)
 
+svr_parameters = {
+    'openness' : {'C' : 0.03, 'gamma' : 19.20, 'threshold' : 0.12},
+    'conscientiousness' : {'C' : 3.0, 'gamma' : 12.7, 'threshold' : 0.22},
+    'extraversion' : {'C' : 0.32, 'gamma' : 0.14, 'threshold' : 0.16},
+    'agreeableness' : {'C' : 3.0, 'gamma' : 19.0, 'threshold' : 0.21},
+    'neuroticism' : {'C' : 2.1, 'gamma' : 0.71, 'threshold' : 0.14}
+}
+
+wrbf_parameters = {
+    'openness' : {'C' : 0.03, 'gamma' : 2.44, 'threshold' : 0.18},
+    'conscientiousness' : {'C' : 0.03, 'gamma' : 0.14, 'threshold' : 0.11},
+    'extraversion' : {'C' : 3.6, 'gamma' : 0.25, 'threshold' : 0.13},
+    'agreeableness' : {'C' : 0.03, 'gamma' : 3.7, 'threshold' : 0.17},
+    'neuroticism' : {'C' : 4.4, 'gamma' : 0.21, 'threshold' : 0.10}
+}
+
 def _make_colormap(seq):
     """Return a LinearSegmentedColormap
     seq: a sequence of floats and RGB-tuples. The floats should be increasing
@@ -162,7 +178,6 @@ def read_data(filename, trait, n_classes = None, normalize = True,
         Which features to read in. Can also be 'all'
         or 'default', meaning the ones I've pragmatically found to be 
         reasonable.
-
       interpolate : bool:
         Whether to replace NaN's with the median value of
         the feature in question.'''
@@ -237,9 +252,22 @@ def read_data(filename, trait, n_classes = None, normalize = True,
     else:
         ntiles = split_ntiles(trait_values, n_classes)
         Y = [determine_ntile(tr, ntiles) for tr in trait_values]
-    
+
     return (X, Y, indexdict)
 
+def get_strong_indices(X, Y, threshold):
+    '''Returns the indices of the features vectors X whose linear correlation
+    with Y is above the imput threshold.'''
+    correlations = get_correlations(X, Y)
+    indices = [i for i in xrange(len(correlations))
+               if correlations[i] >= threshold]
+    return indices
+
+def reduce_data(X, indices):
+    '''Return feature vectors including only the feature numbers in the input
+    list of indices.'''
+    reduced_X = np.array([[x[i] for i in indices] for x in X])
+    return reduced_X
 
 def plot_stuff(input_filename, output_filename=None, color=moerkeroed):
     with open(input_filename, 'r') as f:
@@ -718,15 +746,27 @@ class _BaselineClassifier(object):
         
 
 def _worker(X, Y, score_type, train_percentage, classifier, clf_args, n_groups,
-            replace):
+            replace, threshold):
     '''Worker method for parallelizing bootstrap evaluations.'''
     #Create bootstrap sample
     try:
         rand = np.random.RandomState()  #Ensures PRNG works in children
         indices = rand.choice(xrange(len(X)), size = len(X), replace = replace)
-        rand.randint
         xsample = [X[i] for i in indices]
         ysample = [Y[i] for i in indices]
+        
+        #Generate training and testing set
+        cut = int(train_percentage*len(X))
+        xtrain = xsample[:cut]
+        xtest = xsample[cut:]
+        ytrain = ysample[:cut]
+        ytest = ysample[cut:]
+        
+        #Discard features with too low correlation with output vectors
+        inds = get_strong_indices(X=xtrain, Y=ytrain, threshold = threshold)
+        xtrain = reduce_data(xtrain, inds)
+        xtest = reduce_data(xtest, inds)
+        
         #Create regressor if we're doing regression
         if classifier == 'RandomForestRegressor':
             clf = RandomForestRegressor(**clf_args)
@@ -735,32 +775,38 @@ def _worker(X, Y, score_type, train_percentage, classifier, clf_args, n_groups,
         elif classifier == 'baseline_mean':
             clf = _BaselineRegressor()
         elif classifier == 'WRBFR':
-            clf = _WRBFR(**clf_args)
+            importances = get_correlations(xtrain, ytrain)
+            clf_args['importances'] = importances
+            clf = WRBFR(**clf_args)
         
         #Create classifier and split dataset into labels
         elif classifier == 'RandomForestClassifier':
             clf = RandomForestClassifier(**clf_args)
             ysample = assign_labels(ysample, n_groups)
+            ytrain = ysample[:cut]
+            ytest = ysample[cut:]
         elif classifier == 'SVC':
             clf = svm.SVC(**clf_args)
             ysample = assign_labels(ysample, n_groups)
+            ytrain = ysample[:cut]
+            ytest = ysample[cut:]
         elif classifier == 'baseline_most_common_label':
             clf = _BaselineClassifier()
             ysample = assign_labels(ysample, n_groups)
+            ytrain = ysample[:cut]
+            ytest = ysample[cut:]
         elif classifier == 'WRBFC':
-            clf = _WRBFC(**clf_args)
+            importances = get_correlations(xtrain, ytrain)
+            clf_args['importances'] = importances
+            clf = WRBFC(**clf_args)
             ysample = assign_labels(ysample, n_groups)
+            ytrain = ysample[:cut]
+            ytest = ysample[cut:]
             
         #Fail if none of the above classifiers were specified
         else:
             raise ValueError('Regressor or classifier not defined.')
-        #Generate training and testing set
-        cut = int(train_percentage*len(X))
-        xtrain = xsample[:cut]
-        ytrain = ysample[:cut]
-        xtest = xsample[cut:]
-        ytest = ysample[cut:]
-        
+
         #Fit the classifier or regressor
         clf.fit(xtrain, ytrain)
     
@@ -798,7 +844,7 @@ def _worker(X, Y, score_type, train_percentage, classifier, clf_args, n_groups,
 
 def bootstrap(X, Y, classifier, score_type = 'mse', train_percentage = 0.8,
               clf_args = {}, iterations = 1000, n_groups = 3, n_jobs = 1,
-              replace = True):
+              replace = False, threshold = 0.0):
     '''Performs bootstrap resampling to evaluate the performance of some 
     classifier or regressor. Note that this takes the *complete dataset* as 
     arguments as well as arguments specifying which predictor to use and which
@@ -840,6 +886,10 @@ def bootstrap(X, Y, classifier, score_type = 'mse', train_percentage = 0.8,
     
     replace : bool
       Whether to sample with replacement when obtaining the bootstrap samples.
+    
+    threshold : float
+      features whose linear correlations with vectors in the output space
+      are below this value are discarded.
     '''
     
     if not len(X) == len(Y):
@@ -849,7 +899,7 @@ def bootstrap(X, Y, classifier, score_type = 'mse', train_percentage = 0.8,
     d = {'X' : X, 'Y' : Y, 'train_percentage' : train_percentage,
          'classifier' : classifier, 'clf_args' : clf_args,
          'score_type' : score_type, 'n_groups' : n_groups,
-         'replace' : replace}
+         'replace' : replace, 'threshold' : threshold}
     
     #Make job queue
     pool = multiprocessing.Pool(processes = n_jobs)
@@ -877,7 +927,7 @@ def get_correlations(X, Y):
     return correlations
         
 
-def make_kernel(importances, gamma = 1.0, threshold = 0.0):
+def make_kernel(importances, gamma = 1.0):
     '''Returns a weighted radial basis function (WRBF) kernel which can be 
     passed to an SVM or SVR from the sklearn module.
     
@@ -886,105 +936,117 @@ def make_kernel(importances, gamma = 1.0, threshold = 0.0):
     importances : list
       The importance of each input feature. The value of element i can mean
       e.g. the linear correlation between feature i and target variable y.
-      None means feature will be wieghted equally.
+      None means feature will be weighted equally.
     
     gamma : float
       The usual gamma parameter denoting inverse width of the gaussian used.
-      
-    threshold : float
-      The minimum value of the importance to be used. Features less important
-      than threshold will simply be ignored.
     '''
     def kernel(x,y, *args, **kwargs):
-        if importances == None:
-            weights = np.ones(shape = (len(x),), dtype = np.float64)
+        d = len(importances)  #number of features
+        impsum = sum([imp**2 for imp in importances])
+        if not impsum == 0:
+            normfactor = 1.0/np.sqrt(impsum)
         else:
-            weights = importances
-        d = len(weights)  #number of features
-        #Strong (above threshold) correlations/importances
-        strong = [np.abs(c) if np.abs(c) >= threshold else 0.0
-                  for c in weights]
-        normfactor = 1.0/np.sqrt(sum([e**2 for e in strong]))
+            normfactor = 0.0
         #Metric to compute distance between points
         metric = dok_matrix((d,d), dtype = np.float64)
         for i in xrange(d):
-            metric[i,i] = strong[i]*normfactor
+            metric[i,i] = importances[i]*normfactor
         # 
         result = np.zeros(shape = (len(x), len(y)))
         for i in xrange(len(x)):
             for j in xrange(len(y)):
-                dist = x[i] - y[j]
-                result[i,j] = np.exp(-gamma*np.dot(dist,dist))
+                diff = x[i] - y[j]
+                dist = diff.T.dot(metric*diff)
+                result[i,j] = np.exp(-gamma*dist)
         return result
     return kernel
 
-class _WRBFR(svm.SVR):
+class WRBFR(svm.SVR):
     '''Weighted radial basis function support vector regressor.'''
-    def __init__(self, importances, threshold = 0, C = 1.0, epsilon = 0.1,
+    def __init__(self, importances, C = 1.0, epsilon = 0.1,
                  gamma = 0.0):
-        kernel = make_kernel(importances = importances, threshold = threshold,
-                             gamma = gamma)
-        super(_WRBFR, self).__init__(C = C, epsilon = epsilon, kernel = kernel)
+        kernel = make_kernel(importances = importances, gamma = gamma)
+        super(WRBFR, self).__init__(C = C, epsilon = epsilon, kernel = kernel)
 
-class _WRBFC(svm.SVC):
+class WRBFC(svm.SVC):
     '''Weighted radial basis function support vector classifier.'''
-    def __init__(self, importances, threshold = 0, C = 1.0, gamma = 0.0):
-        kernel = make_kernel(importances = importances, threshold = threshold,
-                             gamma = gamma)
-        super(_WRBFC, self).__init__(C = C, kernel = kernel)
+    def __init__(self, importances, C = 1.0, gamma = 0.0):
+        kernel = make_kernel(importances = importances, gamma = gamma)
+        super(WRBFC, self).__init__(C = C, kernel = kernel)
 
 if __name__ == '__main__':
 
-    
-    X, Y, ind_dict = read_data('../data.json', trait = 'openness',
-                        features = ['call_iet_med', 'text_iet_med', 'social_entropy', 'call_entropy', 'travel_med', 'n_places', 'text_latency', 'call_night_activity'],
-                        n_classes = 3
+    random.seed(42)
+    X, Y, ind_dict = read_data('../data.json', trait = 'extraversion',
+#                        features = ['call_iet_med', 'text_iet_med', 'social_entropy', 'call_entropy', 'travel_med', 'n_places', 'text_latency', 'call_night_activity']
+                         features = 'all'
                         )
-#    X = [[1,2,7,0],[3,1,6,0.01],[6,8,1,0],[10,8,2,0.01]]
-#    Y = [1,1,0,0]
-#    
-    cut = int(0.6*len(X))
-#    
-    random.shuffle(X)
-    random.shuffle(Y)
+    corrs = get_correlations(X, Y)
+
     
+#    for i in xrange(len(corrs)):
+#        print corrs[i], ind_dict[i]
+
+    cut = int(0.6*len(X))    
     xtrain = X[:cut]
     ytrain = Y[:cut]
     xtest = X[cut:]
     ytest = Y[cut:]
-    corrs = get_correlations(X, Y)
-    print corrs
     
-    C = 70
-    gamma = 3.75
+    inds = get_strong_indices(xtrain, ytrain, threshold = 0.08)
+    ind_dict = {i : ind_dict[inds[i]] for i in xrange(len(inds))}
+    xtrain = reduce_data(xtrain, inds)
+    xtest = reduce_data(xtest, inds)
     
-    kernel = make_kernel(corrs, 0.0)
-    
-    clf = svm.SVC(kernel = kernel)
-    clf = svm.SVC()
+    importances = get_correlations(xtrain, ytrain)
+    clf = WRBFR(importances = importances, C = 26.5, epsilon=0.11, gamma = 0.23)
+#    clf = svm.SVR(C = 26.5, epsilon=0.11, gamma = 0.23)
     clf.fit(xtrain, ytrain)
-    
-    hits = 0
-    
+    scores = []
     for i in xrange(len(xtest)):
-        if clf.predict(xtest[i]) == ytest[i]:
-            hits += 1
-        #
-    print 100.0*hits/len(ytest)
-    
-    for i in xrange(len(corrs)):
-        print ind_dict[i], corrs[i]
-    
-    test = _WRBFC(threshold=0.1, gamma = 0.2, importances=corrs)
-    test.fit(xtrain, ytrain)
-    
-    preds = []
-    for i in xrange(len(ytest)):
-        pred = test.predict(xtest[i])[0]
-        print pred, ytest[i]
-        preds.append(pred)
+        pred = clf.predict(xtest[i])
+        print pred
+        scores.append((pred - ytest[i])**2)
+    print np.mean(scores)
 
-    print len(Counter(preds).keys())
+#    X = [[1,2,7,0],[3,1,6,0.01],[6,8,1,0],[10,8,2,0.01]]
+#    Y = [1,1,0,0]
+#    
+
+#    corrs = get_correlations(X, Y)
+#    print corrs
+#    
+#    C = 70
+#    gamma = 3.75
+#    
+#    kernel = make_kernel(corrs, 0.0)
+#    
+#    clf = svm.SVC(kernel = kernel)
+#    clf = svm.SVC()
+#    clf.fit(xtrain, ytrain)
+#    
+#    hits = 0
+#    
+#    for i in xrange(len(xtest)):
+#        if clf.predict(xtest[i]) == ytest[i]:
+#            hits += 1
+#        #
+#    print 100.0*hits/len(ytest)
+#    
+#    for i in xrange(len(corrs)):
+#        print ind_dict[i], corrs[i]
+#    
+#    test = WRBFC(threshold=0.1, gamma = 0.2, importances=corrs)
+#    test.fit(xtrain, ytrain)
+#    
+#    preds = []
+#    for i in xrange(len(ytest)):
+#        pred = test.predict(xtest[i])[0]
+#        print pred, ytest[i]
+#        preds.append(pred)
+#
+#    print len(Counter(preds).keys())
 
 #    print len(X[0])
 ##    print i
