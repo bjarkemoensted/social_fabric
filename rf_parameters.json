@@ -1,0 +1,52 @@
+{
+    "openness": {
+        "n_estimators": 1000, 
+        "min_samples_split": 5, 
+        "max_features": "auto", 
+        "max_leaf_nodes": 2, 
+        "n_features": 8, 
+        "bootstrap": true, 
+        "max_depth": 3, 
+        "min_samples_leaf": 3
+    }, 
+    "extraversion": {
+        "n_estimators": 1000, 
+        "min_samples_split": 5, 
+        "max_features": "auto", 
+        "max_leaf_nodes": 2, 
+        "n_features": 8, 
+        "bootstrap": true, 
+        "max_depth": 3, 
+        "min_samples_leaf": 3
+    }, 
+    "neuroticism": {
+        "n_estimators": 1000, 
+        "min_samples_split": 5, 
+        "max_features": "auto", 
+        "max_leaf_nodes": 2, 
+        "n_features": 8, 
+        "bootstrap": true, 
+        "max_depth": 3, 
+        "min_samples_leaf": 3
+    }, 
+    "agreeableness": {
+        "n_estimators": 1000, 
+        "min_samples_split": 5, 
+        "max_features": "auto", 
+        "max_leaf_nodes": 2, 
+        "n_features": 8, 
+        "bootstrap": true, 
+        "max_depth": 3, 
+        "min_samples_leaf": 3
+    }, 
+    "conscientiousness": {
+        "n_estimators": 1000, 
+        "min_samples_split": 5, 
+        "max_features": "auto", 
+        "max_leaf_nodes": 2, 
+        "n_features": 8, 
+        "bootstrap": true, 
+        "max_depth": 3, 
+        "min_samples_leaf": 3
+    }
+}

@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import multiprocessing
 import numpy as np
+import os
 import random
 from scipy.sparse import dok_matrix
 from sklearn import svm
@@ -21,29 +22,24 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.cross_validation import (cross_val_score, LeaveOneOut, KFold,
                                       StratifiedKFold)
 import sys
-from time import time
 import traceback
+
+BASE = os.path.dirname(__file__)
 
 oldhat = (35/256,39/256,135/256)
 nude = (203/256,150/256,93/256)
 wine = (110/256,14/256,14/256)
 moerkeroed = (156/256,30/256,36/256)
 
-svr_parameters = {
-    'openness' : {'C' : 0.03, 'gamma' : 19.20, 'threshold' : 0.12},
-    'conscientiousness' : {'C' : 3.0, 'gamma' : 12.7, 'threshold' : 0.22},
-    'extraversion' : {'C' : 0.32, 'gamma' : 0.14, 'threshold' : 0.16},
-    'agreeableness' : {'C' : 3.0, 'gamma' : 19.0, 'threshold' : 0.21},
-    'neuroticism' : {'C' : 2.1, 'gamma' : 0.71, 'threshold' : 0.14}
-}
 
-wrbf_parameters = {
-    'openness' : {'C' : 0.03, 'gamma' : 2.44, 'threshold' : 0.18},
-    'conscientiousness' : {'C' : 0.03, 'gamma' : 0.14, 'threshold' : 0.11},
-    'extraversion' : {'C' : 3.6, 'gamma' : 0.25, 'threshold' : 0.13},
-    'agreeableness' : {'C' : 0.03, 'gamma' : 3.7, 'threshold' : 0.17},
-    'neuroticism' : {'C' : 4.4, 'gamma' : 0.21, 'threshold' : 0.10}
-}
+#Empirically determined optimal hyperparameters for SVRs and RFs
+with open(BASE+'/svr_parameters.json', 'r') as f:
+    svr_parameters = json.load(f)
+
+wrbf_parameters = svr_parameters  #updater!!!
+
+with open(BASE+'/rf_parameters.json', 'r') as f:
+    rf_parameters = json.load(f)
 
 def _make_colormap(seq):
     """Return a LinearSegmentedColormap
@@ -913,7 +909,7 @@ def bootstrap(X, Y, classifier, score_type = 'mse', train_percentage = 0.8,
     
     return [j.get() for j in jobs]
 
-def get_correlations(X, Y):
+def get_correlations(X, Y, absolute = True):
     '''Given a list of feature vectors X and labels or values Y, returns a list
     of correlation coefficients for each dimension of the feature vectors.'''
     n_feats = len(X[0])
@@ -924,6 +920,8 @@ def get_correlations(X, Y):
         if math.isnan(correlation):
             correlation = 0
         correlations.append(correlation)
+    if absolute:
+        correlations = [np.abs(c) for c in correlations]
     return correlations
         
 
@@ -1001,14 +999,20 @@ if __name__ == '__main__':
     
     importances = get_correlations(xtrain, ytrain)
     clf = WRBFR(importances = importances, C = 26.5, epsilon=0.11, gamma = 0.23)
+    clf_baseline = _BaselineRegressor()
 #    clf = svm.SVR(C = 26.5, epsilon=0.11, gamma = 0.23)
     clf.fit(xtrain, ytrain)
+    clf_baseline.fit(xtrain, ytrain)
+    scores_baseline = []
     scores = []
     for i in xrange(len(xtest)):
         pred = clf.predict(xtest[i])
+        pred_baseline = clf_baseline.predict(xtest[i])
         print pred
         scores.append((pred - ytest[i])**2)
-    print np.mean(scores)
+        scores_baseline.append((pred_baseline - ytest[i])**2)
+    print np.mean(scores)**0.5
+    print np.mean(scores_baseline)**0.5
 
 #    X = [[1,2,7,0],[3,1,6,0.01],[6,8,1,0],[10,8,2,0.01]]
 #    Y = [1,1,0,0]

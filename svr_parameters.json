@@ -1,0 +1,32 @@
+{
+    "openness": {
+        "epsilon": 0.29, 
+        "C": 20,
+        "n_features": 3,
+        "gamma": 0.05
+    }, 
+    "extraversion": {
+            "epsilon": 0.4,
+            "C": 30,
+            "n_features": 5,
+            "gamma": 0.06
+    }, 
+    "neuroticism": {
+        "epsilon": 0.6, 
+        "C": 10,
+        "n_features": 4, 
+        "gamma": 0.3
+    }, 
+    "agreeableness": {
+        "epsilon": 0.7, 
+        "C": 10, 
+        "n_features": 1, 
+        "gamma": 0.05
+    },
+    "conscientiousness": {
+        "epsilon": 0.05, 
+        "C": 0.8, 
+        "n_features": 7, 
+        "gamma": 0.05
+    }
+}
