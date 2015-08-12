@@ -1,0 +1,102 @@
+{
+    "physical_activity": {
+        "C": 10, 
+        "n_features": 5, 
+        "gamma": 0.05
+    }, 
+    "contact_partner": {
+        "C": 1, 
+        "n_features": 9, 
+        "gamma": 0.75
+    }, 
+    "selfrated_appearance": {
+        "C": 0.8, 
+        "n_features": 10, 
+        "gamma": 0.05
+    }, 
+    "weight": {
+        "C": 60, 
+        "n_features": 2, 
+        "gamma": 1.5
+    }, 
+    "religion": {
+        "C": 10, 
+        "n_features": 7, 
+        "gamma": 0.75
+    }, 
+    "drugs_marihuana": {
+        "C": 60, 
+        "n_features": 8, 
+        "gamma": 0.3
+    }, 
+    "trust_other": {
+        "C": 2, 
+        "n_features": 7, 
+        "gamma": 2
+    }, 
+    "politic_do_well": {
+        "C": 2, 
+        "n_features": 5, 
+        "gamma": 0.3
+    }, 
+    "online_roleplay": {
+        "C": 5, 
+        "n_features": 8, 
+        "gamma": 0.85
+    }, 
+    "height": {
+        "C": 100, 
+        "n_features": 7, 
+        "gamma": 0.1
+    }, 
+    "sleep_uncalm": {
+        "C": 200, 
+        "n_features": 2, 
+        "gamma": 2
+    }, 
+    "birthyear": {
+        "C": 100, 
+        "n_features": 2, 
+        "gamma": 2
+    }, 
+    "extraversion": {
+        "C": 20, 
+        "n_features": 9, 
+        "gamma": 0.05
+    }, 
+    "neuroticism": {
+        "C": 2, 
+        "n_features": 4, 
+        "gamma": 2
+    }, 
+    "agreeableness": {
+        "C": 60, 
+        "n_features": 6, 
+        "gamma": 3
+    }, 
+    "drugs_other": {
+        "C": 200, 
+        "n_features": 10, 
+        "gamma": 0.1
+    }, 
+    "conscientiousness": {
+        "C": 80, 
+        "n_features": 3, 
+        "gamma": 3
+    }, 
+    "openness": {
+        "C": 42, 
+        "n_features": 3, 
+        "gamma": 1.5
+    }, 
+    "sex": {
+        "C": 80, 
+        "n_features": 7, 
+        "gamma": 0.85
+    }, 
+    "smoke_freq": {
+        "C": 200, 
+        "n_features": 7, 
+        "gamma": 0.2
+    }
+}

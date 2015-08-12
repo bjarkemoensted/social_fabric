@@ -36,10 +36,20 @@ moerkeroed = (156/256,30/256,36/256)
 with open(BASE+'/svr_parameters.json', 'r') as f:
     svr_parameters = json.load(f)
 
-wrbf_parameters = svr_parameters  #updater!!!
+with open(BASE+'/wrbfr_parameters.json', 'r') as f:
+    wrbf_parameters = json.load(f)
 
 with open(BASE+'/rf_parameters.json', 'r') as f:
     rf_parameters = json.load(f)
+
+with open(BASE+'/svc_parameters.json', 'r') as f:
+    svc_parameters = json.load(f)
+
+with open(BASE+'/wrbfc_parameters.json', 'r') as f:
+    wrbfc_parameters = json.load(f)
+    
+with open(BASE+'/rfc_parameters.json', 'r') as f:
+    rfc_parameters = json.load(f)
 
 def _make_colormap(seq):
     """Return a LinearSegmentedColormap
@@ -61,6 +71,38 @@ color_map = _make_colormap([oldhat, moerkeroed, 0.33, moerkeroed, nude, 0.67, nu
 
 big_five = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 
             'neuroticism']
+
+_misc_traits = """religion
+smoke_freq
+physical_activity
+drugs_marihuana
+drugs_other
+sleep_uncalm
+politic_do_well
+online_roleplay
+selfrated_appearance
+trust_other
+contact_partner
+sex
+birthyear
+height
+weight""".split('\n')
+
+def _filter_values(trait, Y):
+    '''Translates a list of values to a valid list of labels.
+    Example: [male, female, female, male] gets converted to [1, 0, 0, 1].'''
+    if trait == 'contact_partner':
+        result = [0 if y=='Har ingen' or y=='Aldrig' else 1 for y in Y]
+    elif trait == 'politic_do_well':
+        '''Ranges from easy going to hard working-ish'''
+        temp = [u'Equally import', u'Hard work', u'Luck and help']
+        d = dict(zip(temp, [1,2,0]))
+        result = [d[y] for y in Y]
+    else:
+        temp = sorted(list(set(Y)))
+        d = dict(zip(temp, range(len(temp))))
+        result = [d[y] for y in Y]
+    return result
 
 #_default_features = ["n_texts",
 #                     "ct_iet_std",
@@ -177,7 +219,7 @@ def read_data(filename, trait, n_classes = None, normalize = True,
       interpolate : bool:
         Whether to replace NaN's with the median value of
         the feature in question.'''
-    if trait == 'sex':    
+    if trait in _misc_traits:    
         n_classes = None
     #Read in the raw data
     with open(filename, 'r') as f:
@@ -234,13 +276,6 @@ def read_data(filename, trait, n_classes = None, normalize = True,
     for line in raw:
         #Add value of psychological trait
         psych_trait = line['profile'][trait]
-        if trait == 'Sex':
-            if psych_trait == 'Female':
-                psych_trait = 0
-            elif psych_trait == 'Male':
-                psych_trait = 1
-            else:
-                raise ValueError('My code is binary gender normative, sorry.')
         trait_values.append(psych_trait)
     Y = []
     if n_classes == None:
@@ -248,6 +283,9 @@ def read_data(filename, trait, n_classes = None, normalize = True,
     else:
         ntiles = split_ntiles(trait_values, n_classes)
         Y = [determine_ntile(tr, ntiles) for tr in trait_values]
+
+    if trait in _misc_traits:
+        Y = _filter_values(trait, Y)
 
     return (X, Y, indexdict)
 
@@ -468,10 +506,24 @@ def check_regressor(X, Y, reg, strata = None):
         #
     return (np.mean(model_abs_errors), np.mean(baseline_abs_errors))
 
+def _reservoir_sampler(start = 1):
+    '''Generator of the probabilities need to do reservoir sampling. The point
+    it that this can be used to iterate through a list, discarding each element
+    for the following element with probability P_n and ending up with a random 
+    element from the list.'''
+    n = start
+    while True:
+        p = 1/n
+        r = random.uniform(0,1)
+        if r < p:
+            yield True
+        else:
+            yield False
+        n += 1
+
 class _RFNN(object):
     __metaclass__ = abc.ABCMeta
-    '''Abstract class for random forest nearest neightbor predictors.
-    This should never be instantiated.'''
+    '''Abstract class for random forest nearest neighbour predictors.'''
     
     def __init__(self, forest, n_neighbors):
         self.forest = forest
@@ -503,7 +555,7 @@ class _RFNN(object):
         '''Computes a similarity measure for two points using a trained random
         forest classifier.'''
         if self.X == None or self.Y == None:
-            raise NotImplementedError("Model has not been fittet to data yet.")
+            raise AttributeError("Model has not been fittet to data yet.")
 
         #Feature vectors must be single precision.
         a = np.array([a], dtype = np.float32)
@@ -547,22 +599,7 @@ class _RFNN(object):
     def score(self, X, Y):
         pass
 
-def _reservoir_sampler(start = 1):
-    '''Generator of the probabilities need to do reservoir sampling. The point
-    it that this can be used to iterate through a list, discarding each element
-    for the following element with probability P_n and ending up with a random 
-    element from the list.'''
-    n = start
-    while True:
-        p = 1/n
-        r = random.uniform(0,1)
-        if r < p:
-            yield True
-        else:
-            yield False
-        n += 1
-
-class RFNNClassifier(_RFNN):
+class RFNNC(_RFNN):
     '''Random Forest Nearest Neighbor Classifier.
     
     Parameters
@@ -649,9 +686,9 @@ class RFNNClassifier(_RFNN):
         self.weighting = weighting
         
         #Call parent constructor
-        super(RFNNClassifier, self).__init__(forest, n_neighbors)
+        super(RFNNC, self).__init__(forest, n_neighbors)
 
-class RFNNRegressor(_RFNN):
+class RFNNR(_RFNN):
     '''Random Forest Nearest Neighbor Regressor.
     
     Parameters
@@ -708,7 +745,7 @@ class RFNNRegressor(_RFNN):
         # Set params
         self.weighting = weighting
         # Done. Call parent constructor
-        super(RFNNRegressor, self).__init__(forest, n_neighbors)    
+        super(RFNNR, self).__init__(forest, n_neighbors)    
 
 
 class _BaselineRegressor(object):
